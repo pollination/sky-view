@@ -5,6 +5,8 @@ from pollination.honeybee_radiance.octree import CreateOctreeWithSky
 from pollination.honeybee_radiance.translate import CreateRadianceFolderGrid
 from pollination.honeybee_radiance.grid import SplitGridFolder, MergeFolderData
 from pollination.honeybee_radiance.raytrace import RayTracingSkyView
+from pollination.honeybee_radiance.post_process import SkyViewConfig
+from pollination.honeybee_vtk.translate import Translate as TranslateVTKJS
 
 # input/output alias
 from pollination.alias.inputs.model import hbjson_model_grid_input
@@ -172,6 +174,35 @@ class SkyViewEntryPoint(DAG):
                 'to': 'results/sky_view'
             }
         ]
+
+    @task(template=SkyViewConfig)
+    def write_sky_view_config_file(self, folder='sky_view'):
+        return [
+            {
+                'from': SkyViewConfig()._outputs.cfg_file,
+                'to': 'results/config.json'
+            }
+        ]
+
+    @task(
+        template=TranslateVTKJS,
+        needs=[restructure_results, write_sky_view_config_file]
+    )
+    def create_vtkjs(
+        self, hbjson_file=model, file_type='vtkjs', grid_options='points',
+        data='results'
+    ):
+        return [
+            {
+                'from': TranslateVTKJS()._outputs.output_file,
+                'to': 'visualization/sky_view.vtkjs'
+            }
+        ]
+
+    visualization = Outputs.file(
+        source='visualization/sky_view.vtkjs',
+        description='Results visualization in 3D in vtkjs format.'
+    )
 
     results = Outputs.folder(
         source='results/sky_view', description='Folder with raw result files (.res) '
