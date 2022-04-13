@@ -1,8 +1,11 @@
 # sky-view
-Recipe for computing Sky View.
 
-Sky View is defined as the percent of the sky dome seen by a surface. These can
-be computed either using a uniform (default) sky or a cloudy sky.
+Recipe for computing Sky View (aka. Sky Component).
+
+Sky View is defined as the percent of the sky dome seen by a surface. This can
+be computed either using a uniform (default) sky or a cloudy sky. Note that sky
+view's definition means that sky regions directly in front of the surface carry
+more weight than those at the sides.
 
 Note that computing cloudy Sky View for a vertically-oriented geometry (horizontal
 sensor direction) will yield Vertical Sky Component (VSC) as described by the UK
