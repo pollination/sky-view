@@ -93,7 +93,7 @@ class SkyViewEntryPoint(DAG):
             },
             {
                 'from': CreateRadianceFolderGrid()._outputs.model_sensor_grids_file,
-                'to': 'results/grids_info.json'
+                'to': 'results/sky_view/grids_info.json'
             },
             {
                 'from': CreateRadianceFolderGrid()._outputs.sensor_grids,
@@ -144,7 +144,7 @@ class SkyViewEntryPoint(DAG):
         template=RayTracingSkyView,
         needs=[create_rad_folder, split_grid_folder, create_octree],
         loop=split_grid_folder._outputs.sensor_grids,
-        sub_folder='initial_results/{{item.full_id}}',  # create a subfolder for each grid
+        sub_folder='initial_results/{{item.full_id}}',  # subfolder for each grid
         sub_paths={'grid': '{{item.full_id}}.pts'}  # sensor_grid sub_path
     )
     def sky_view_ray_tracing(
@@ -169,11 +169,12 @@ class SkyViewEntryPoint(DAG):
         return [
             {
                 'from': MergeFolderData()._outputs.output_folder,
-                'to': 'results'
+                'to': 'results/sky_view'
             }
         ]
 
     results = Outputs.folder(
-        source='results', description='Folder with raw result files (.res) that contain '
-        'sky view (or exposure)) values for each sensor.', alias=sky_view_results
+        source='results/sky_view', description='Folder with raw result files (.res) '
+        'that contain sky view (or exposure)) values for each sensor.',
+        alias=sky_view_results
     )
