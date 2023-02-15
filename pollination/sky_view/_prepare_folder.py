@@ -1,4 +1,4 @@
-from pollination_dsl.dag import Inputs, DAG, task, Outputs
+from pollination_dsl.dag import Inputs, GroupedDAG, task, Outputs
 from dataclasses import dataclass
 from pollination.honeybee_radiance.sky import GenSkyWithCertainIllum
 from pollination.honeybee_radiance.octree import CreateOctreeWithSky
@@ -14,13 +14,10 @@ from pollination.alias.inputs.grid import grid_filter_input, \
     min_sensor_count_input, cpu_count
 from pollination.alias.outputs.daylight import sky_view_results
 
-from ._prepare_folder import SkyViewPrepareFolder
-from ._postprocess import SkyViewPostprocess
-
 
 @dataclass
-class SkyViewEntryPoint(DAG):
-    """Sky view entry point."""
+class SkyViewPrepareFolder(GroupedDAG):
+    """Prepare folder for sky view."""
 
     # inputs
     model = Inputs.file(
@@ -71,75 +68,80 @@ class SkyViewEntryPoint(DAG):
         alias=rad_par_sky_view_input
     )
 
-    @task(template=SkyViewPrepareFolder)
-    def prepare_folder_sky_view(
-        self, model=model, cpu_count=cpu_count,
-        min_sensor_count=min_sensor_count, cloudy_sky=cloudy_sky,
-        grid_filter=grid_filter
-    ):
+    @task(template=GenSkyWithCertainIllum)
+    def generate_sky(self, uniform=cloudy_sky, ground_reflectance=0):
         return [
             {
-                'from': SkyViewPrepareFolder()._outputs.model_folder,
+                'from': GenSkyWithCertainIllum()._outputs.sky,
+                'to': 'resources/input.sky'
+            }
+        ]
+
+    @task(template=CreateRadianceFolderGrid, annotations={'main_task': True})
+    def create_rad_folder(
+        self, input_model=model, grid_filter=grid_filter
+            ):
+        """Translate the input model to a radiance folder."""
+        return [
+            {
+                'from': CreateRadianceFolderGrid()._outputs.model_folder,
                 'to': 'model'
             },
             {
-                'from': SkyViewPrepareFolder()._outputs.resources,
-                'to': 'resources'
+                'from': CreateRadianceFolderGrid()._outputs.bsdf_folder,
+                'to': 'model/bsdf'
             },
             {
-                'from': SkyViewPrepareFolder()._outputs.initial_results,
-                'to': 'initial_results'
-            },
-            {
-                'from': SkyViewPrepareFolder()._outputs.sensor_grids
+                'from': CreateRadianceFolderGrid()._outputs.model_sensor_grids_file,
+                'to': 'resources/grids_info.json'
             }
         ]
 
     @task(
-        template=RayTracingSkyView,
-        needs=[prepare_folder_sky_view],
-        loop=prepare_folder_sky_view._outputs.sensor_grids,
-        sub_folder='initial_results/{{item.full_id}}',  # subfolder for each grid
-        sub_paths={
-            'scene_file': 'scene.oct',
-            'grid': 'grid/{{item.full_id}}.pts',
-            'bsdf_folder': 'bsdf'
-            }
+        template=CreateOctreeWithSky, needs=[generate_sky, create_rad_folder]
     )
-    def sky_view_ray_tracing(
-        self,
-        radiance_parameters=radiance_parameters,
-        scene_file=prepare_folder_sky_view._outputs.resources,
-        grid=prepare_folder_sky_view._outputs.resources,
-        bsdf_folder=prepare_folder_sky_view._outputs.model_folder
+    def create_octree(
+        self, model=create_rad_folder._outputs.model_folder,
+        sky=generate_sky._outputs.sky
     ):
+        """Create octree from radiance folder and sky."""
         return [
             {
-                'from': RayTracingSkyView()._outputs.result,
-                'to': '../{{item.name}}.res'
+                'from': CreateOctreeWithSky()._outputs.scene_file,
+                'to': 'resources/scene.oct'
             }
         ]
 
     @task(
-        template=SkyViewPostprocess,
-        needs=[prepare_folder_sky_view, sky_view_ray_tracing],
-        sub_paths={
-            'grids_info': 'grids_info.json'
-            }
+        template=SplitGridFolder, needs=[create_rad_folder],
+        sub_paths={'input_folder': 'grid'}
     )
-    def postprocess_sky_view(
-        self, input_folder=prepare_folder_sky_view._outputs.initial_results,
-        grids_info=prepare_folder_sky_view._outputs.resources,
+    def split_grid_folder(
+        self, input_folder=create_rad_folder._outputs.model_folder,
+        cpu_count=cpu_count, cpus_per_grid=1, min_sensor_count=min_sensor_count
     ):
+        """Split sensor grid folder based on the number of CPUs"""
         return [
             {
-                'from': SkyViewPostprocess()._outputs.results,
-                'to': 'results'
+                'from': SplitGridFolder()._outputs.output_folder,
+                'to': 'resources/grid'
+            },
+            {
+                'from': SplitGridFolder()._outputs.dist_info,
+                'to': 'initial_results/_redist_info.json'
             }
         ]
 
-    results = Outputs.folder(
-        source='results/sky_view', description='Folder with raw result files (.res) '
-        'that contain sky view (or exposure)) values for each sensor.',
-        alias=sky_view_results
+    model_folder = Outputs.folder(
+        source='model', description='input model folder folder.'
     )
+
+    resources = Outputs.folder(
+        source='resources', description='resources folder.'
+    )
+
+    initial_results = Outputs.folder(
+        source='initial_results', description='initial results folder.'
+    )
+
+    sensor_grids = Outputs.list(source='resources/grid/_info.json')
