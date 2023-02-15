@@ -124,15 +124,24 @@ class SkyViewEntryPoint(DAG):
             }
     )
     def postprocess_sky_view(
-        self, input_folder=prepare_folder_sky_view._outputs.initial_results,
+        self, model=model, input_folder=prepare_folder_sky_view._outputs.initial_results,
         grids_info=prepare_folder_sky_view._outputs.resources,
     ):
         return [
             {
                 'from': SkyViewPostprocess()._outputs.results,
                 'to': 'results'
+            },
+            {
+                'from': SkyViewPostprocess()._outputs.visualization,
+                'to': 'visualization.vsf'
             }
         ]
+
+    visualization = Outputs.file(
+        source='visualization.vsf',
+        description='Result visualization in VisualizationSet format.'
+    )
 
     results = Outputs.folder(
         source='results/sky_view', description='Folder with raw result files (.res) '
