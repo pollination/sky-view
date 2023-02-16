@@ -30,7 +30,7 @@ class SkyViewPostprocess(GroupedDAG):
     @task(
         template=MergeFolderData
     )
-    def restructure_results(self, input_folder='initial_results', extension='res'):
+    def restructure_results(self, input_folder=input_folder, extension='res'):
         return [
             {
                 'from': MergeFolderData()._outputs.output_folder,
